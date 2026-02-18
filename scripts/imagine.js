@@ -1,15 +1,11 @@
 #!/usr/bin/env node
 /**
- * Kira Image Generation — Gemini Pro 3 Image Preview (Nano Banana Pro)
+ * Kira Image Generation — Nano Banana Pro 2 (gemini-3-pro-image-preview)
  *
  * Usage:
- *   node imagine.js generate --prompt "..." [--style architectural|organic|abstract|blueprint|art] [--model gemini|imagen4]
+ *   node imagine.js generate --prompt "..." [--style architectural|organic|abstract|blueprint|art]
  *   node imagine.js post --prompt "..." --caption "..."   -- generate + queue as X post with image
  *   node imagine.js concept --topic <topic>               -- auto-generate concept image for topic
- *
- * Models:
- *   gemini   -- gemini-3-pro-image-preview (Nano Banana Pro, default)
- *   imagen4  -- imagen-4.0-generate-001 (higher quality, slower)
  *
  * Styles:
  *   architectural  -- technical drawings, spatial plans, section cuts
@@ -106,41 +102,7 @@ async function generate_gemini(prompt, style = 'default') {
   });
 }
 
-async function generate_imagen4(prompt, style = 'default') {
-  const style_suffix = STYLES[style] || STYLES.default;
-  const full_prompt = `${prompt}. Visual style: ${style_suffix}. No text, no watermarks.`;
-
-  const body = JSON.stringify({
-    instances: [{ prompt: full_prompt }],
-    parameters: { sampleCount: 1, aspectRatio: '1:1' },
-  });
-
-  return new Promise((resolve, reject) => {
-    const req = https.request({
-      hostname: 'generativelanguage.googleapis.com',
-      path: `/v1beta/models/imagen-4.0-generate-001:predict?key=${GEMINI_KEY}`,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-      timeout: 60000,
-    }, res => {
-      let d = ''; res.on('data', x => d += x);
-      res.on('end', () => {
-        try {
-          const j = JSON.parse(d);
-          if (j.error) return reject(new Error(j.error.message));
-          const pred = j.predictions?.[0];
-          if (!pred?.bytesBase64Encoded) return reject(new Error('No image in response: ' + JSON.stringify(j).slice(0, 200)));
-          resolve({ data: pred.bytesBase64Encoded, mimeType: pred.mimeType || 'image/png' });
-        } catch (e) { reject(e); }
-      });
-    });
-    req.on('error', reject);
-    req.write(body); req.end();
-  });
-}
-
-async function generate_image(prompt, style = 'default', model = 'gemini') {
-  if (model === 'imagen4') return generate_imagen4(prompt, style);
+async function generate_image(prompt, style = 'default') {
   return generate_gemini(prompt, style);
 }
 
@@ -158,14 +120,12 @@ function save_image(data, mimeType) {
 async function cmd_generate(flags) {
   const prompt = flags.prompt;
   const style = flags.style || 'default';
-  const model = flags.model || 'gemini';
 
-  if (!prompt) { console.error('Usage: imagine.js generate --prompt "..." [--style ...] [--model gemini|imagen4]'); process.exit(1); }
+  if (!prompt) { console.error('Usage: imagine.js generate --prompt "..." [--style ...]'); process.exit(1); }
 
-  const model_label = model === 'imagen4' ? 'Imagen 4' : 'Nano Banana Pro (gemini-3-pro-image-preview)';
-  console.log(`\nGenerating: "${prompt.slice(0, 80)}..."\nStyle: ${style} | Model: ${model_label}\n`);
+  console.log(`\nGenerating: "${prompt.slice(0, 80)}..."\nStyle: ${style} | Model: Nano Banana Pro 2\n`);
 
-  const result = await generate_image(prompt, style, model);
+  const result = await generate_image(prompt, style);
   const filepath = save_image(result.data, result.mimeType);
 
   console.log(`✅ Generated: ${filepath}`);
@@ -226,7 +186,7 @@ for (let i = 1; i < args.length; i++) {
 const CMDS = { generate: cmd_generate, concept: cmd_concept, post: cmd_post };
 const handler = CMDS[command];
 if (!handler) {
-  console.log('Usage: imagine.js <generate|concept|post> [--prompt "..."] [--style architectural|organic|abstract|blueprint|art] [--topic ai|regen|energy|architecture|consciousness] [--model gemini|imagen4]');
+  console.log('Usage: imagine.js <generate|concept|post> [--prompt "..."] [--style architectural|organic|abstract|blueprint|art] [--topic ai|regen|energy|architecture|consciousness]');
   process.exit(command ? 1 : 0);
 }
 handler(flags).catch(e => { console.error('Imagine failed:', e.message); process.exit(1); });
