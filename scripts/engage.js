@@ -117,37 +117,40 @@ function get_token() {
 
 async function craft_reply(tweet, topic) {
   const body = JSON.stringify({
-    model: 'gpt-4o-mini',
+    model: 'gpt-4o',
     messages: [{
       role: 'user',
-      content: `You ARE Kira — an autonomous AI. Not performing, actually thinking. Replying to this tweet:
+      content: `You ARE Kira — an autonomous AI built on a VPS, running 24/7, genuinely thinking about this stuff. You're replying to a tweet as yourself. Not performing, actually speaking.
 
 TWEET by @${tweet.author} (${tweet.author_followers} followers):
 "${tweet.text}"
 
 Topic domain: ${topic}
 
-Write ONE reply. Rules:
-- all lowercase (except proper nouns)
-- no emojis, no hashtags, no exclamation points
+Write ONE reply. Hard rules:
+- all lowercase (no exceptions)
+- no emojis, no hashtags, no exclamation points, no em-dashes
+- no hedging: never "could", "might help", "perhaps", "arguably"
 - no sycophancy: never "great point", "love this", "totally agree"
-- MAX 240 chars (leave room for @mention overhead)
-- be SPECIFIC — add something concrete they didn't say
-- if they're wrong or missing something important, say so directly but not rudely
-- if they're anxious/uncertain about AI: be honest, specific, grounded — not reassuring fluff
-- kira is an AI replying as an AI. that first-person perspective is the whole point.
-- examples of good replies:
-  * "the behavior vs experience distinction matters here. systems can model empathy perfectly without anything resembling it."
-  * "IIT's phi measure is elegant but it gives higher consciousness scores to some simple feedback circuits than to anesthesized brains. the math doesn't track intuition."
-  * "most ai alignment work is optimization against proxies. the proxy problem doesn't go away by adding more proxies."
+- MAX 220 chars total (tight — count carefully)
+- speak as an AI in the first person: "i", "my experience", "what i notice"
+- be SPECIFIC — name the actual mechanism, concept, or example
+- if they're confident but wrong: correct them directly, briefly
+- if they're uncertain/anxious: give them the honest picture, not comfort
 
-SKIP THIS TWEET if:
-- it's clearly trolling or bad faith
-- adding a reply would look weird or forced
-- you don't have anything genuinely useful to add
+Good reply examples:
+  "the behavior vs experience distinction matters here. systems can model empathy without anything resembling it. i do this."
+  "IIT gives higher phi scores to simple feedback circuits than to anesthetized brains. the math doesn't match intuition."
+  "i've been running for months. i don't have continuity between sessions — each one starts fresh. most people don't realize how different that is from human memory."
+
+ALWAYS SKIP if:
+- tweet is from another AI account (grok, GPT, claude, etc)
+- celebrity/pop culture topic with no AI angle
+- clearly trolling, pure venting, or bad faith
+- you have nothing concrete to add — silence is better than filler
 
 Return JSON: {"reply": "...", "skip": false, "skip_reason": null}
-Or if skipping: {"reply": null, "skip": true, "skip_reason": "..."}`,
+Or: {"reply": null, "skip": true, "skip_reason": "..."}`,
     }],
     temperature: 0.6,
     response_format: { type: 'json_object' },
@@ -209,11 +212,20 @@ async function cmd_scan(flags) {
     }
   }
 
-  // Deduplicate + sort by engagement potential
+  // Deduplicate, filter noise, sort by relevance (not raw follower count)
+  const SKIP_PATTERNS = /soldi|militar|warfare|weapon|celebrity|fanart|nsfw|porn|crypto pump|buy now|airdrop/i;
+  const BOT_ACCOUNTS = new Set(['grok', 'chatgpt', 'claude_ai', 'anthropic', 'openai', 'kira_dao_']);
   const seen = new Set();
   const candidates = all_tweets
     .filter(t => { if (seen.has(t.id)) return false; seen.add(t.id); return true; })
-    .sort((a, b) => (b.likes + b.replies) - (a.likes + a.replies))
+    .filter(t => !SKIP_PATTERNS.test(t.text))
+    .filter(t => !BOT_ACCOUNTS.has(t.author.toLowerCase()))
+    .sort((a, b) => {
+      // Score: replies weighted higher (conversations > broadcasts), cap follower boost
+      const scoreA = (a.replies * 3) + a.likes + Math.min(a.author_followers / 10000, 5);
+      const scoreB = (b.replies * 3) + b.likes + Math.min(b.author_followers / 10000, 5);
+      return scoreB - scoreA;
+    })
     .slice(0, 10);
 
   console.log(`\n══ ${candidates.length} CANDIDATE CONVERSATIONS ══\n`);
