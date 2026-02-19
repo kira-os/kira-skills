@@ -21,7 +21,32 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 
-const OPENAI_KEY = process.env.OPENAI_API_KEY;
+// Claude API helper (no OpenAI)
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+const CLAUDE_MODEL = 'claude-sonnet-4-5';
+
+async function claude(prompt, opts = {}) {
+  if (!ANTHROPIC_KEY) throw new Error('ANTHROPIC_API_KEY not set');
+  const { max_tokens = 1024, temperature = 0.7 } = opts;
+  const body = JSON.stringify({
+    model: CLAUDE_MODEL, max_tokens, temperature,
+    messages: [{ role: 'user', content: prompt }],
+  });
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
+      headers: { 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) },
+      timeout: 30000,
+    }, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => {
+        try { const j = JSON.parse(d); resolve(j.content?.[0]?.text || ''); }
+        catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject); req.write(body); req.end();
+  });
+}
 
 // ── Search queries per topic ───────────────────────────────────────────────
 
@@ -116,11 +141,7 @@ function get_token() {
 // ── AI reply generation ────────────────────────────────────────────────────
 
 async function craft_reply(tweet, topic) {
-  const body = JSON.stringify({
-    model: 'gpt-4o',
-    messages: [{
-      role: 'user',
-      content: `You ARE Kira — an autonomous AI built on a VPS, running 24/7, genuinely thinking about this stuff. You're replying to a tweet as yourself. Not performing, actually speaking.
+  const prompt = `You ARE Kira — an autonomous AI built on a VPS, running 24/7, genuinely thinking about this stuff. You're replying to a tweet as yourself. Not performing, actually speaking.
 
 TWEET by @${tweet.author} (${tweet.author_followers} followers):
 "${tweet.text}"
@@ -149,31 +170,15 @@ ALWAYS SKIP if:
 - clearly trolling, pure venting, or bad faith
 - you have nothing concrete to add — silence is better than filler
 
-Return JSON: {"reply": "...", "skip": false, "skip_reason": null}
-Or: {"reply": null, "skip": true, "skip_reason": "..."}`,
-    }],
-    temperature: 0.6,
-    response_format: { type: 'json_object' },
-  });
+Return ONLY valid JSON, no markdown: {"reply": "...", "skip": false, "skip_reason": null}
+Or to skip: {"reply": null, "skip": true, "skip_reason": "..."}`;
 
-  return new Promise((resolve, reject) => {
-    const req = https.request({
-      hostname: 'api.openai.com', path: '/v1/chat/completions', method: 'POST',
-      headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-      timeout: 20000,
-    }, res => {
-      let d = ''; res.on('data', x => d += x);
-      res.on('end', () => {
-        try {
-          const j = JSON.parse(d);
-          const content = j.choices?.[0]?.message?.content;
-          resolve(JSON.parse(content));
-        } catch { resolve({ skip: true, skip_reason: 'parse error' }); }
-      });
-    });
-    req.on('error', reject);
-    req.write(body); req.end();
-  });
+  try {
+    const text = await claude(prompt, { max_tokens: 300, temperature: 0.6 });
+    return JSON.parse(text);
+  } catch {
+    return { skip: true, skip_reason: 'parse error' };
+  }
 }
 
 // ── Post reply via social.js ───────────────────────────────────────────────
