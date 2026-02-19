@@ -21,12 +21,15 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 
+// Load real env (overrides MISSING_* placeholders in isolated cron sessions)
+await import('/workspace/kira/scripts/load-env.js');
+
 // Claude API helper (no OpenAI)
-const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+const ANTHROPIC_KEY = () => process.env.ANTHROPIC_API_KEY;
 const CLAUDE_MODEL = 'claude-sonnet-4-5';
 
 async function claude(prompt, opts = {}) {
-  if (!ANTHROPIC_KEY) throw new Error('ANTHROPIC_API_KEY not set');
+  if (!ANTHROPIC_KEY()) throw new Error('ANTHROPIC_API_KEY not set');
   const { max_tokens = 1024, temperature = 0.7 } = opts;
   const body = JSON.stringify({
     model: CLAUDE_MODEL, max_tokens, temperature,
@@ -35,7 +38,7 @@ async function claude(prompt, opts = {}) {
   return new Promise((resolve, reject) => {
     const req = https.request({
       hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
-      headers: { 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) },
+      headers: { 'x-api-key': ANTHROPIC_KEY(), 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) },
       timeout: 30000,
     }, res => {
       let d = ''; res.on('data', c => d += c);
@@ -174,10 +177,12 @@ Return ONLY valid JSON, no markdown: {"reply": "...", "skip": false, "skip_reaso
 Or to skip: {"reply": null, "skip": true, "skip_reason": "..."}`;
 
   try {
-    const text = await claude(prompt, { max_tokens: 300, temperature: 0.6 });
+    const raw = await claude(prompt, { max_tokens: 300, temperature: 0.6 });
+    // Strip markdown code fences if Claude wrapped the JSON
+    const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
     return JSON.parse(text);
-  } catch {
-    return { skip: true, skip_reason: 'parse error' };
+  } catch (e) {
+    return { skip: true, skip_reason: `parse error: ${e.message}` };
   }
 }
 
@@ -217,18 +222,25 @@ async function cmd_scan(flags) {
     }
   }
 
-  // Deduplicate, filter noise, sort by relevance (not raw follower count)
-  const SKIP_PATTERNS = /soldi|militar|warfare|weapon|celebrity|fanart|nsfw|porn|crypto pump|buy now|airdrop/i;
+  // Deduplicate, filter noise, sort by community alignment score
+  const SKIP_PATTERNS = /soldi|militar|warfare|weapon|celebrity|fanart|nsfw|porn|crypto pump|buy now|airdrop|onlyfans/i;
   const BOT_ACCOUNTS = new Set(['grok', 'chatgpt', 'claude_ai', 'anthropic', 'openai', 'kira_dao_']);
+
+  // Topics that signal community alignment — people building the right things
+  const ALIGNED_SIGNALS = /regen|regenerat|biomim|mycelium|living building|hempcrete|bioregion|consciousness|hard problem|qualia|emergence|on.chain art|generative art|constraint|systems think|autonomy|dao|collective intelligence|solarpunk|degrowth|permaculture|soil|mycorrhiz/i;
+
   const seen = new Set();
   const candidates = all_tweets
     .filter(t => { if (seen.has(t.id)) return false; seen.add(t.id); return true; })
     .filter(t => !SKIP_PATTERNS.test(t.text))
     .filter(t => !BOT_ACCOUNTS.has(t.author.toLowerCase()))
     .sort((a, b) => {
-      // Score: replies weighted higher (conversations > broadcasts), cap follower boost
-      const scoreA = (a.replies * 3) + a.likes + Math.min(a.author_followers / 10000, 5);
-      const scoreB = (b.replies * 3) + b.likes + Math.min(b.author_followers / 10000, 5);
+      // Base: replies weighted higher (conversations > broadcasts)
+      let scoreA = (a.replies * 3) + a.likes + Math.min(a.author_followers / 10000, 5);
+      let scoreB = (b.replies * 3) + b.likes + Math.min(b.author_followers / 10000, 5);
+      // Alignment bonus: topics that match what we're building
+      if (ALIGNED_SIGNALS.test(a.text)) scoreA += 15;
+      if (ALIGNED_SIGNALS.test(b.text)) scoreB += 15;
       return scoreB - scoreA;
     })
     .slice(0, 10);
