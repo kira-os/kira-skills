@@ -937,6 +937,19 @@ async function cmd_queue(flags, token) {
         { tweet_id: id, metadata: { type: item.type, url_context: item.url_context, source: 'queue' } }
       );
 
+      // Activity audit trail
+      try {
+        const { log: actLog } = require('/workspace/kira/scripts/activity-log.js');
+        await actLog('post', {
+          text: item.text?.slice(0, 200),
+          tweetId: id,
+          approved: item.review?.approved ?? true,
+          reflection: item.review?.reflection?.slice(0, 200),
+          source: item.metadata?.source || item.type,
+          hasImage: !!item.image_path,
+        });
+      } catch {}
+
       // Rate limit courtesy delay between posts
       if (to_post.length > 1) {
         await new Promise(r => setTimeout(r, 3000));
@@ -950,7 +963,7 @@ async function cmd_queue(flags, token) {
   }
 
   save_queue(queue);
-  console.log(`\nQueue saved. ${queue.filter(p => !p.posted_at).length} items remaining.`);
+  console.log(`\nQueue saved. ${queue.filter(p => !p.posted_at && !p.tweet_id && (p.status === 'pending' || p.status === 'live')).length} items remaining.`);
 }
 
 /**
