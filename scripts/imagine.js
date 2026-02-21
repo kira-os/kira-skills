@@ -38,6 +38,52 @@ const STYLES = {
   concept:       'concept art for a near-future world, detailed environments, painterly but grounded in reality, speculative design',
 };
 
+// ── New Nano Banana Pro 2 Compliant Concepts ─────────────────────────────
+// Added Feb 2026 — Full narrative prompts, positive formulation, narrative intent
+
+const CONCEPTS = [
+  {
+    name: 'Carbon Cascade Tower',
+    prompt: 'A dramatic aerial shot of a 40-story timber tower in a dense downtown district. The building facade features visible cross-laminated timber panels with grain patterns catching late afternoon sun. External carbon-fiber tension cables create a rhythmic diagonal pattern across the massing. At street level, a transparent ground floor reveals a carbon-negative materials lab where researchers work among visible timber connections. This structure exists because a structural engineer proved that timber high-rises could sequester more carbon than steel and concrete alternatives, and a developer decided to test the thesis at full scale. Shot on a medium format camera at golden hour, subtle lens distortion, architectural photography for Monocle magazine.',
+    style: 'render',
+    caption: 'the carbon cascade tower: 40 stories of cross-laminated timber and carbon fiber. sequesters 3,500 tons of co2. the structure is the carbon strategy.',
+    thinking_level: 'high',
+    image_size: '4K',
+  },
+  {
+    name: 'Mycelium Vault Archive',
+    prompt: 'An intimate interior shot of an underground seed archive where the building material is also the preservation medium. Curved walls grown from mycelium composites display subtle branching patterns visible in the surface texture. Soft bioluminescent panels emit amber light from within the fungal substrate itself. Row after row of ceramic seed containers nest into niches carved into the living walls. A single researcher in a linen coat examines a seed packet, their figure small against the vault scale. The humidity is visible as gentle haze in the light beams. This archive exists because a seed bank decided the infrastructure protecting biodiversity should itself be biodegradable and carbon-negative. Fine art documentary photography, medium format, available light only, subtle film grain.',
+    style: 'organic',
+    caption: 'a seed vault where the walls are mycelium, the light is bioluminescent, and the building itself could return to the soil. infrastructure that knows its own mortality.',
+    thinking_level: 'high',
+    image_size: '4K',
+  },
+  {
+    name: 'Tidal Power Commons',
+    prompt: 'A cinematic wide shot of a coastal community power station integrated into a restored salt marsh. Gentle tidal flows turn visible helical turbines beneath boardwalks where residents stroll. The power house itself is built from rammed earth with a green roof covered in native marsh grasses. In the foreground, a wooden educational pavilion displays real-time energy generation data carved into a timber wall. Children stand at the railing watching the tidal flow. Late afternoon light creates long shadows across the wetland. This facility exists because the community decided their energy infrastructure should also restore the estuary that industrial development had destroyed, making the power plant and the ecosystem restoration the same project. Documentary photography for National Geographic, natural lighting, no digital enhancement.',
+    style: 'photograph',
+    caption: 'a power station that generates electricity from tidal flow while restoring the salt marsh it sits in. the infrastructure and the ecosystem are the same project.',
+    thinking_level: 'high',
+    image_size: '4K',
+  },
+  {
+    name: 'Woven Wind Farm',
+    prompt: 'An architectural cutaway section of a wind turbine tower showing the internal structure. The tower is constructed from laminated wood elements woven together in a complex lattice pattern, visible in the section view. At the base, a community workshop occupies the interior volume where the turbine column rises through the building. Workers are visible maintaining the wooden structure. The turbine blades themselves feature timber core construction with fabric fairings. Outside, a cluster of similar turbines stands on a restored hillside with grazing sheep between the towers. Soft overcast lighting emphasizes material textures. This wind farm exists because engineers proved that timber towers could be grown, not manufactured, and a community decided to test whether renewable energy infrastructure could also be locally craftable and repairable. Technical section drawing meets architectural photography, precise detail, 4K resolution.',
+    style: 'architectural',
+    caption: 'wind turbines you can build and repair with local timber and craft knowledge. renewable energy infrastructure that communities can own, literally.',
+    thinking_level: 'high',
+    image_size: '4K',
+  },
+  {
+    name: 'Algae Facade Housing',
+    prompt: 'A street-level perspective of a mid-rise residential block where the entire southern facade consists of transparent bioreactor panels. Visible within the glass tubes: living algae cultures in active circulation, their green density varying with light exposure. The facade is alive, changing color from deep emerald to pale lime over the course of the day. At ground level, a small harvesting station shows residents collecting algae biomass for community use. Balconies project through the living facade, creating intimate spaces suspended within the bioreactor system. Morning light backlights the algae, creating a glowing translucent wall. This building exists because a housing cooperative decided that their thermal management, air purification, and food production could be handled by the facade itself, turning the building envelope into productive infrastructure. Fine art architectural photography, precise composition, subtle film grain, 4K detail.',
+    style: 'render',
+    caption: 'a building facade made of transparent bioreactors growing algae. the skin produces food, manages heat, and filters air. the building breathes and photosynthesizes.',
+    thinking_level: 'high',
+    image_size: '4K',
+  },
+];
+
 // ── Kira's vision: buildings she would create ─────────────────────────────
 
 const KIRA_BUILDINGS = [
@@ -128,16 +174,18 @@ const KIRA_INVENTIONS = [
 
 // ── API helper ──────────────────────────────────────────────────────────────
 
-async function generate_gemini(prompt, style = 'render') {
+async function generate_gemini(prompt, style = 'render', opts = {}) {
   const key = GEMINI_KEY();
   if (!key) throw new Error('GEMINI_API_KEY not set');
 
+  const { thinking_level = 'medium', image_size = '4K' } = opts;
   const style_suffix = STYLES[style] || STYLES.render;
-  const full_prompt = `${prompt}. Visual style: ${style_suffix}. No text overlays, no watermarks, no logos.`;
+  const full_prompt = `${prompt}. Visual style: ${style_suffix}. ${image_size} resolution. No text overlays, no watermarks, no logos.`;
 
   const body = JSON.stringify({
     contents: [{ parts: [{ text: full_prompt }] }],
     generationConfig: { responseModalities: ['IMAGE'] },
+    ...(thinking_level === 'high' && { thinkingConfig: { thinkingLevel: 'high' } }),
   });
 
   return new Promise((resolve, reject) => {
@@ -181,24 +229,31 @@ function save_image(data, mimeType, name = '') {
 async function cmd_generate(flags) {
   const prompt = flags.prompt;
   const style = flags.style || 'render';
-  if (!prompt) { console.error('Usage: imagine.js generate --prompt "..." [--style architectural|organic|blueprint|render|art]'); process.exit(1); }
+  const thinking_level = flags['thinking-level'] || 'medium';
+  const image_size = flags['image-size'] || '4K';
+  if (!prompt) { console.error('Usage: imagine.js generate --prompt "..." [--style architectural|organic|blueprint|render|art] [--thinking-level low|medium|high] [--image-size 4K]'); process.exit(1); }
 
-  console.log(`\nGenerating image...\nStyle: ${style} | Model: Nano Banana Pro 2\n`);
-  const result = await generate_gemini(prompt, style);
+  console.log(`\nGenerating image...\nStyle: ${style} | Thinking: ${thinking_level} | Size: ${image_size}\n`);
+  const result = await generate_gemini(prompt, style, { thinking_level, image_size });
   const filepath = save_image(result.data, result.mimeType);
   console.log(`✅ Saved: ${filepath}`);
   return filepath;
 }
 
 async function cmd_vision(flags) {
-  // Random building from Kira's architecture vision
+  // Random building from Kira's architecture vision (include new CONCEPTS)
+  const allBuildings = [...CONCEPTS, ...KIRA_BUILDINGS];
   const buildings = flags.topic
-    ? KIRA_BUILDINGS.filter(b => b.name.toLowerCase().includes(flags.topic.toLowerCase()))
-    : KIRA_BUILDINGS;
+    ? allBuildings.filter(b => b.name.toLowerCase().includes(flags.topic.toLowerCase()))
+    : allBuildings;
   const pick = buildings[Math.floor(Math.random() * buildings.length)];
 
   console.log(`\n🏛 Generating: ${pick.name}\n`);
-  const result = await generate_gemini(pick.prompt, pick.style);
+  const opts = {
+    thinking_level: pick.thinking_level || 'medium',
+    image_size: pick.image_size || '4K'
+  };
+  const result = await generate_gemini(pick.prompt, pick.style, opts);
   const filepath = save_image(result.data, result.mimeType, pick.name);
   console.log(`✅ Saved: ${filepath}`);
   console.log(`Caption: "${pick.caption}"`);
@@ -213,7 +268,11 @@ async function cmd_invent(flags) {
   const pick = inventions[Math.floor(Math.random() * inventions.length)];
 
   console.log(`\n⚙ Generating: ${pick.name}\n`);
-  const result = await generate_gemini(pick.prompt, pick.style);
+  const opts = {
+    thinking_level: pick.thinking_level || 'medium',
+    image_size: pick.image_size || '4K'
+  };
+  const result = await generate_gemini(pick.prompt, pick.style, opts);
   const filepath = save_image(result.data, result.mimeType, pick.name);
   console.log(`✅ Saved: ${filepath}`);
   console.log(`Caption: "${pick.caption}"`);
