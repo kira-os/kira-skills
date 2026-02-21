@@ -29,6 +29,7 @@
  *      SUPABASE_URL, SUPABASE_SERVICE_KEY (for logging)
  */
 
+import '/workspace/kira/scripts/load-env.js';  // load .env for ANTHROPIC_SCRIPT_KEY etc in cron/subprocess contexts
 import https from 'https';
 import crypto from 'crypto';
 import fs from 'fs';
