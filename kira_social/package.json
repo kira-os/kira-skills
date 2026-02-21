@@ -1,0 +1,9 @@
+{
+  "name": "@kira-os/openclaw-social",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "twitter-api-v2": "^1.19.0"
+  }
+}

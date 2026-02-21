@@ -1,0 +1,10 @@
+{
+  "name": "@kira-os/openclaw-memory",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
+    "openai": "^4.80.0"
+  }
+}

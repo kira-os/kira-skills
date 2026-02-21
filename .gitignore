@@ -1,0 +1,4 @@
+**/.oauth2_tokens.json
+**/.user_cache.json
+**/node_modules/
+**/.env
