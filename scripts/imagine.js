@@ -376,8 +376,10 @@ async function generate_gemini(prompt, style = 'render', opts = {}) {
 
   const body = JSON.stringify({
     contents: [{ parts: [{ text: full_prompt }] }],
-    generationConfig: { responseModalities: ['IMAGE'] },
-    // thinkingConfig removed — not supported by gemini-3-pro-image-preview
+    generationConfig: {
+      responseModalities: ['TEXT', 'IMAGE'],
+      imageConfig: { aspectRatio: '16:9', imageSize: '2K' },
+    },
   });
 
   return new Promise((resolve, reject) => {
